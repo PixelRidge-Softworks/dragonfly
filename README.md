@@ -3,6 +3,8 @@
 
 # Dragonfly
 
+### NOTE: PixelRidge only live builds the binary for Ubuntu 22.04 for one of it's projects. We have not made and will not make any modifications to this code other than to keep it updated with the upstream
+
 Dragonfly is a heavily asynchronous server software for Minecraft: Bedrock Edition written in Go. It was written with scalability
 and simplicity in mind and aims to make the process of setting up a server and modifying it easy. Unlike other
 Minecraft server software, Dragonfly is generally used as a library to extend.
