@@ -1,0 +1,83 @@
+name: Build and Release DragonFly
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * *' # Daily at midnight
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.22
+
+    - name: Install dependencies
+      run: go mod tidy
+
+    - name: Build binary
+      run: go build -o dragonfly ./cmd/dragonfly
+
+    - name: Archive binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: dragonfly
+        path: dragonfly
+
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install GitHub CLI
+      run: |
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+        sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt-get update
+        sudo apt-get install gh
+
+    - name: Get latest upstream release
+      id: get_release
+      run: |
+        LATEST_TAG=$(curl -s https://api.github.com/repos/df-mc/dragonfly/releases/latest | jq -r .tag_name)
+        echo "tag=$LATEST_TAG" >> $GITHUB_ENV
+
+    - name: Download binary artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: dragonfly
+        path: .
+
+    - name: Delete existing release
+      env:
+        GH_TOKEN: ${{ secrets.GH_PAT }}
+      run: |
+        if gh release view ${{ env.tag }} > /dev/null 2>&1; then
+          gh release delete ${{ env.tag }} -y
+        fi
+
+    - name: Create GitHub release
+      env:
+        GH_TOKEN: ${{ secrets.GH_PAT }}
+      run: |
+        gh release create ${{ env.tag }} dragonfly --title "Release ${{ env.tag }}" --notes "Automated release of version ${{ env.tag }}" --latest
+
+    - name: Update latest tag
+      env:
+        GH_TOKEN: ${{ secrets.GH_PAT }}
+      run: |
+        gh release delete latest -y || true
+        gh release create latest dragonfly --title "Latest Release" --notes "Latest build from the main branch" --latest
