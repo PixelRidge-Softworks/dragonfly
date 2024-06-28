@@ -26,7 +26,7 @@ jobs:
       run: go mod tidy
 
     - name: Build binary
-      run: go build -o dragonfly ./cmd/dragonfly
+      run: go build -o dragonfly
 
     - name: Archive binary
       uses: actions/upload-artifact@v3
