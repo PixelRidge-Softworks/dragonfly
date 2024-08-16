@@ -2,6 +2,7 @@ package player
 
 import (
 	"fmt"
+	"github.com/df-mc/dragonfly/server/player/diagnostics"
 	"math"
 	"math/rand"
 	"net"
@@ -1853,17 +1854,7 @@ func (p *Player) drops(held item.Stack, b world.Block) []item.Stack {
 		t = item.ToolNone{}
 	}
 	var drops []item.Stack
-	if container, ok := b.(block.Container); ok {
-		// If the block is a container, it should drop its inventory contents regardless whether the
-		// player is in creative mode or not.
-		drops = container.Inventory().Items()
-		if breakable, ok := b.(block.Breakable); ok && !p.GameMode().CreativeInventory() {
-			if breakable.BreakInfo().Harvestable(t) {
-				drops = append(drops, breakable.BreakInfo().Drops(t, held.Enchantments())...)
-			}
-		}
-		container.Inventory().Clear()
-	} else if breakable, ok := b.(block.Breakable); ok && !p.GameMode().CreativeInventory() {
+	if breakable, ok := b.(block.Breakable); ok && !p.GameMode().CreativeInventory() {
 		if breakable.BreakInfo().Harvestable(t) {
 			drops = breakable.BreakInfo().Drops(t, held.Enchantments())
 		}
@@ -2056,6 +2047,11 @@ func (p *Player) SetVelocity(velocity mgl64.Vec3) {
 // when facing forward).
 func (p *Player) Rotation() cube.Rotation {
 	return cube.Rotation{p.yaw.Load(), p.pitch.Load()}
+}
+
+// ChangingDimension returns whether the player is currently changing dimension or not.
+func (p *Player) ChangingDimension() bool {
+	return p.session().ChangingDimension()
 }
 
 // Collect makes the player collect the item stack passed, adding it to the inventory. The amount of items that could
@@ -2723,6 +2719,11 @@ func (p *Player) PunchAir() {
 	}
 	p.SwingArm()
 	p.World().PlaySound(p.Position(), sound.Attack{})
+}
+
+// UpdateDiagnostics updates the diagnostics of the player.
+func (p *Player) UpdateDiagnostics(d diagnostics.Diagnostics) {
+	p.Handler().HandleDiagnostics(d)
 }
 
 // damageItem damages the item stack passed with the damage passed and returns the new stack. If the item
