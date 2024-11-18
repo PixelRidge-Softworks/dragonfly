@@ -80,7 +80,9 @@ type Player struct {
 	// lastTickedWorld holds the world that the player was in, in the last tick.
 	lastTickedWorld *world.World
 
-	speed      atomic.Uint64
+	speed       atomic.Uint64
+	flightSpeed atomic.Uint64
+
 	health     *entity.HealthManager
 	experience *entity.ExperienceManager
 	effects    *entity.EffectManager
@@ -141,6 +143,7 @@ func New(name string, skin skin.Skin, pos mgl64.Vec3) *Player {
 	p.Handle(nil)
 	p.skin.Store(&skin)
 	p.speed.Store(math.Float64bits(0.1))
+	p.flightSpeed.Store(math.Float64bits(0.05))
 	p.nameTag.Store(&name)
 	p.scoreTag.Store(&scoreTag)
 	p.airSupplyTicks.Store(300)
@@ -491,6 +494,20 @@ func (p *Player) Speed() float64 {
 	return math.Float64frombits(p.speed.Load())
 }
 
+// SetFlightSpeed sets the flight speed of the player. The value passed represents the base speed, which is
+// multiplied by 10 to obtain the actual blocks/tick speed that the player will then obtain while flying.
+func (p *Player) SetFlightSpeed(flightSpeed float64) {
+	p.flightSpeed.Store(math.Float64bits(flightSpeed))
+	p.session().SendAbilities()
+}
+
+// FlightSpeed returns the flight speed of the player, with the value representing the base speed. The actual
+// blocks/tick speed is this value multiplied by 10. The default flight speed of a player is 0.05, which
+// corresponds to 0.5 blocks/tick.
+func (p *Player) FlightSpeed() float64 {
+	return math.Float64frombits(p.flightSpeed.Load())
+}
+
 // Health returns the current health of the player. It will always be lower than Player.MaxHealth().
 func (p *Player) Health() float64 {
 	return p.health.Health()
@@ -691,7 +708,7 @@ func (p *Player) FinalDamageFrom(dmg float64, src world.DamageSource) float64 {
 // Explode ...
 func (p *Player) Explode(explosionPos mgl64.Vec3, impact float64, c block.ExplosionConfig) {
 	diff := p.Position().Sub(explosionPos)
-	p.Hurt(math.Floor((impact*impact+impact)*3.5*c.Size+1), entity.ExplosionDamageSource{})
+	p.Hurt(math.Floor((impact*impact+impact)/2*7*c.Size*2+1), entity.ExplosionDamageSource{})
 	p.knockBack(explosionPos, impact, diff[1]/diff.Len()*impact)
 }
 
@@ -1042,6 +1059,14 @@ func (p *Player) StopSwimming() {
 		return
 	}
 	p.updateState()
+}
+
+// Splash is called when a water bottle splashes onto the player.
+func (p *Player) Splash(*world.World, mgl64.Vec3) {
+	if d := p.OnFireDuration(); d.Seconds() <= 0 {
+		return
+	}
+	p.Extinguish()
 }
 
 // StartCrawling makes the player start crawling if it is not currently doing so. If the player is sneaking
@@ -2103,13 +2128,22 @@ func (p *Player) ChangingDimension() bool {
 	return p.session().ChangingDimension()
 }
 
+// CanCollect returns whether the player is able to pick up an item stack or not.
+func (p *Player) CanCollect() bool {
+	if p.Dead() {
+		return false
+	}
+	if !p.GameMode().AllowsInteraction() {
+		return false
+	}
+
+	return true
+}
+
 // Collect makes the player collect the item stack passed, adding it to the inventory. The amount of items that could
 // be added is returned.
 func (p *Player) Collect(s item.Stack) int {
-	if p.Dead() {
-		return 0
-	}
-	if !p.GameMode().AllowsInteraction() {
+	if !p.CanCollect() {
 		return 0
 	}
 	ctx := event.C()
